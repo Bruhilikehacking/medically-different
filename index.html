@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Doctor's Office – 3D Horror</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="ui">
+    <div class="stat">Money: $<span id="money">0</span></div>
+    <div class="stat">Hunger: <span id="hunger">100</span></div>
+    <div class="stat">Hydration: <span id="hydration">100</span></div>
+    <div class="stat">Patients treated: <span id="treated">0</span></div>
+    <div class="buttons">
+      <button id="buyFood">$10 – Buy Food (+25 Hunger)</button>
+      <button id="buyWater">$5 – Buy Water (+25 Hydration)</button>
+    </div>
+    <div id="message"></div>
+  </div>
+
+  <div id="overlay">
+    <div id="title">Doctor's Office</div>
+    <div id="subtitle">Some of them are human. Some are not.</div>
+    <button id="startBtn">Start Shift</button>
+  </div>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/three.min.js"></script>
+  <!-- PointerLock controls (optional, simple custom controls below instead) -->
+  <script src="game.js"></script>
+</body>
+</html>
