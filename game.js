@@ -1,148 +1,148 @@
-// Basic 3D horror doctor's office game using Three.js
+// Doctor's Office 3D Horror - improved, all assets are 3D meshes
+// Drop-in single-file game logic. Uses Three.js r152 from CDN.
 
-let scene, camera, renderer;
-let clock;
-let player = {
-  x: 0,
-  z: 5,
-  speed: 5,
-  rotY: 0
-};
+let scene, camera, renderer, clock;
+let player = { x: 0, z: 5, speed: 4, rotY: 0 };
 let keys = {};
 let patients = [];
 let raycaster = new THREE.Raycaster();
-let mouse = new THREE.Vector2(0, 0); // center of screen
-let money = 0;
-let hunger = 100;
-let hydration = 100;
-let treatedCount = 0;
+let mouse = new THREE.Vector2(0, 0); // center
+let money = 0, hunger = 100, hydration = 100, treatedCount = 0;
 let gameOver = false;
-let lastSpawnTime = 0;
-let spawnInterval = 5; // seconds
-let uiMoney, uiHunger, uiHydration, uiTreated, uiMessage;
+let lastSpawnTime = 0, spawnInterval = 6;
+let ui = {};
 let overlay, startBtn;
 
-window.addEventListener("load", () => {
-  uiMoney = document.getElementById("money");
-  uiHunger = document.getElementById("hunger");
-  uiHydration = document.getElementById("hydration");
-  uiTreated = document.getElementById("treated");
-  uiMessage = document.getElementById("message");
-  overlay = document.getElementById("overlay");
-  startBtn = document.getElementById("startBtn");
+window.addEventListener('load', () => {
+  ui.money = document.getElementById('money');
+  ui.hunger = document.getElementById('hunger');
+  ui.hydration = document.getElementById('hydration');
+  ui.treated = document.getElementById('treated');
+  ui.message = document.getElementById('message');
+  overlay = document.getElementById('overlay');
+  startBtn = document.getElementById('startBtn');
 
-  document.getElementById("buyFood").addEventListener("click", buyFood);
-  document.getElementById("buyWater").addEventListener("click", buyWater);
-  startBtn.addEventListener("click", startGame);
+  document.getElementById('buyFood').addEventListener('click', buyFood);
+  document.getElementById('buyWater').addEventListener('click', buyWater);
+  startBtn.addEventListener('click', startGame);
 
-  // Keep mouse at center for raycasting
-  mouse.set(0, 0);
+  // Helpful hint: allow WASD movement instructions in message
+  ui.message.textContent = "Press Start Shift to begin. Use WASD to move, click to treat.";
 });
 
 function startGame() {
-  overlay.style.display = "none";
-  init();
-  animate();
+  overlay.style.display = 'none';
+  try {
+    init();
+    animate();
+  } catch (err) {
+    console.error('Init error', err);
+    ui.message.textContent = 'Failed to start game. See console for details.';
+    overlay.style.display = 'flex';
+  }
 }
 
 function init() {
-  // Scene
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x000000);
+  // Reset state
+  patients.length = 0;
+  money = 0; hunger = 100; hydration = 100; treatedCount = 0; gameOver = false;
+  lastSpawnTime = 0;
 
-  // Fog for horror vibe
-  scene.fog = new THREE.FogExp2(0x000000, 0.08);
+  // Scene and fog
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x050505);
+  scene.fog = new THREE.Fog(0x050505, 6, 30);
 
   // Camera
-  camera = new THREE.PerspectiveCamera(
-    75,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    100
-  );
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
   camera.position.set(player.x, 1.6, player.z);
+  camera.lookAt(0, 1.6, 0);
 
   // Renderer
-  renderer = new THREE.WebGLRenderer({
-    canvas: document.getElementById("gameCanvas"),
-    antialias: true
-  });
+  const canvas = document.getElementById('gameCanvas');
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x050505);
 
-  // Lighting
-  const ambient = new THREE.AmbientLight(0x222222);
+  // Lights
+  const ambient = new THREE.AmbientLight(0x404040, 1.2);
   scene.add(ambient);
 
-  const spot = new THREE.SpotLight(0xffffff, 2, 15, Math.PI / 6, 0.5, 1);
-  spot.position.set(0, 3, 5);
-  spot.target.position.set(0, 0, -5);
-  scene.add(spot);
-  scene.add(spot.target);
+  const keyLight = new THREE.DirectionalLight(0xfff7e6, 0.9);
+  keyLight.position.set(2, 6, 2);
+  scene.add(keyLight);
 
-  // Floor
-  const floorGeo = new THREE.PlaneGeometry(20, 20);
-  const floorMat = new THREE.MeshStandardMaterial({
-    color: 0x111111,
-    roughness: 0.9
-  });
-  const floor = new THREE.Mesh(floorGeo, floorMat);
+  const cold = new THREE.PointLight(0x66aaff, 0.6, 12);
+  cold.position.set(-3, 2.5, -2);
+  scene.add(cold);
+
+  // Room (floor + walls) - all 3D meshes
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.95 });
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), floorMat);
   floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
   scene.add(floor);
 
-  // Walls (simple room)
-  const wallMat = new THREE.MeshStandardMaterial({
-    color: 0x111111,
-    roughness: 0.8
-  });
-  const wallGeo = new THREE.BoxGeometry(20, 4, 0.2);
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x0f0f0f, roughness: 0.95 });
+  const back = new THREE.Mesh(new THREE.BoxGeometry(20, 4, 0.2), wallMat);
+  back.position.set(0, 2, -10);
+  scene.add(back);
+  const front = back.clone(); front.position.set(0, 2, 10); scene.add(front);
+  const left = new THREE.Mesh(new THREE.BoxGeometry(20, 4, 0.2), wallMat); left.rotation.y = Math.PI/2; left.position.set(-10,2,0); scene.add(left);
+  const right = left.clone(); right.position.set(10,2,0); scene.add(right);
 
-  const wallBack = new THREE.Mesh(wallGeo, wallMat);
-  wallBack.position.set(0, 2, -10);
-  scene.add(wallBack);
-
-  const wallFront = new THREE.Mesh(wallGeo, wallMat);
-  wallFront.position.set(0, 2, 10);
-  scene.add(wallFront);
-
-  const wallLeft = new THREE.Mesh(wallGeo, wallMat);
-  wallLeft.rotation.y = Math.PI / 2;
-  wallLeft.position.set(-10, 2, 0);
-  scene.add(wallLeft);
-
-  const wallRight = new THREE.Mesh(wallGeo, wallMat);
-  wallRight.rotation.y = Math.PI / 2;
-  wallRight.position.set(10, 2, 0);
-  scene.add(wallRight);
-
-  // Simple desk
-  const deskGeo = new THREE.BoxGeometry(3, 1, 1.5);
-  const deskMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-  const desk = new THREE.Mesh(deskGeo, deskMat);
-  desk.position.set(0, 0.5, 0);
+  // Desk (3D)
+  const deskMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.1, roughness: 0.7 });
+  const desk = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.9, 1.4), deskMat);
+  desk.position.set(0, 0.45, 0);
   scene.add(desk);
+
+  // Chair (3D)
+  const chairMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.12, 0.8), chairMat);
+  seat.position.set(-1.6, 0.25, 0.6);
+  scene.add(seat);
+  const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.12), chairMat);
+  backrest.position.set(-1.6, 0.65, 1.0);
+  scene.add(backrest);
+
+  // Gurney (3D)
+  const gurneyMat = new THREE.MeshStandardMaterial({ color: 0x1b1b1b });
+  const gurney = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.2, 0.8), gurneyMat);
+  gurney.position.set(3.5, 0.35, -2.5);
+  scene.add(gurney);
+
+  // Lamp (3D)
+  const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.2), new THREE.MeshStandardMaterial({ color: 0x999999 }));
+  lampBase.position.set(2.5, 1.0, 3.5);
+  scene.add(lampBase);
+  const lampHead = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8), new THREE.MeshStandardMaterial({ color: 0xfff1cc, emissive: 0x221100, emissiveIntensity: 0.6 }));
+  lampHead.position.set(2.5, 1.6, 3.5);
+  scene.add(lampHead);
+
+  // Simple poster (plane) to add depth (still 3D mesh)
+  const posterMat = new THREE.MeshStandardMaterial({ color: 0x222233, roughness: 0.9 });
+  const poster = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.8), posterMat);
+  poster.position.set(-4.5, 2.0, -6.9);
+  poster.rotation.y = 0.05;
+  scene.add(poster);
 
   // Clock
   clock = new THREE.Clock();
 
   // Input
-  window.addEventListener("keydown", (e) => (keys[e.code] = true));
-  window.addEventListener("keyup", (e) => (keys[e.code] = false));
-  window.addEventListener("mousemove", onMouseMove);
-  window.addEventListener("click", onClick);
-  window.addEventListener("resize", onResize);
+  window.addEventListener('keydown', (e) => keys[e.code] = true);
+  window.addEventListener('keyup', (e) => keys[e.code] = false);
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('click', onClick);
+  window.addEventListener('resize', onResize);
 
-  // Initial patients
-  for (let i = 0; i < 3; i++) {
-    spawnPatient();
-  }
+  // Spawn initial patients (3)
+  for (let i = 0; i < 3; i++) spawnPatient();
 
-  gameOver = false;
-  money = 0;
-  hunger = 100;
-  hydration = 100;
-  treatedCount = 0;
   updateUI();
-  uiMessage.textContent = "Listen carefully. Some of them are wrong.";
+  ui.message.textContent = "Shift started. Treat humans, avoid alternates.";
 }
 
 function onResize() {
@@ -154,196 +154,187 @@ function onResize() {
 
 function onMouseMove(e) {
   if (gameOver) return;
-  const movementX = e.movementX || 0;
-  player.rotY -= movementX * 0.002;
+  const movementX = e.movementX || e.mozMovementX || e.webkitMovementX || 0;
+  player.rotY -= movementX * 0.0025;
 }
 
 function onClick() {
   if (gameOver) return;
-  // Treat patient in the center of view
   treatPatient();
 }
 
 function spawnPatient() {
-  const isAlternate = Math.random() < 0.35; // 35% chance
-  const bodyGeo = new THREE.BoxGeometry(0.6, 1.6, 0.4);
-  const color = isAlternate ? 0x550000 : 0xcccccc;
-  const bodyMat = new THREE.MeshStandardMaterial({
-    color,
-    emissive: isAlternate ? 0x220000 : 0x000000
-  });
-  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  // Create a full 3D patient: head + body + subtle limbs (all meshes)
+  const isAlternate = Math.random() < 0.35;
+  const bodyColor = isAlternate ? 0x330000 : 0xdcdcdc;
+  const emissive = isAlternate ? 0x220000 : 0x000000;
 
-  // Random position in room, but not too close to player
+  const group = new THREE.Group();
+
+  const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, emissive, roughness: 0.8 });
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.0, 0.35), bodyMat);
+  torso.position.set(0, 0.8, 0);
+  group.add(torso);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 8), new THREE.MeshStandardMaterial({ color: 0xf2d9c9, roughness: 0.9 }));
+  head.position.set(0, 1.6, 0);
+  group.add(head);
+
+  const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.7, 0.18), bodyMat);
+  leftLeg.position.set(-0.18, 0.25, 0);
+  group.add(leftLeg);
+  const rightLeg = leftLeg.clone(); rightLeg.position.set(0.18, 0.25, 0); group.add(rightLeg);
+
+  // Random position not too close to player
   let x, z;
   do {
     x = (Math.random() - 0.5) * 14;
     z = (Math.random() - 0.5) * 14;
   } while (Math.hypot(x - player.x, z - player.z) < 3);
 
-  body.position.set(x, 0.8, z);
+  group.position.set(x, 0, z);
 
-  // Slight idle animation data
-  body.userData = {
-    isAlternate,
-    baseY: body.position.y,
-    phase: Math.random() * Math.PI * 2
-  };
+  // store metadata
+  group.userData = { isAlternate, baseY: group.position.y, phase: Math.random() * Math.PI * 2 };
 
-  scene.add(body);
-  patients.push(body);
+  scene.add(group);
+  patients.push(group);
 }
 
 function movePatients(delta) {
-  patients.forEach((p) => {
-    // Idle float
-    p.userData.phase += delta;
-    p.position.y = p.userData.baseY + Math.sin(p.userData.phase) * 0.05;
+  for (let p of patients) {
+    p.userData.phase += delta * 2;
+    p.position.y = p.userData.baseY + Math.sin(p.userData.phase) * 0.03;
 
-    // Alternates slowly drift toward you
     if (p.userData.isAlternate) {
-      const dirX = player.x - p.position.x;
-      const dirZ = player.z - p.position.z;
-      const dist = Math.hypot(dirX, dirZ);
+      // alternates drift slowly toward player
+      const dx = player.x - p.position.x;
+      const dz = player.z - p.position.z;
+      const dist = Math.hypot(dx, dz);
       if (dist > 0.1) {
-        const speed = 0.5;
-        p.position.x += (dirX / dist) * speed * delta;
-        p.position.z += (dirZ / dist) * speed * delta;
+        const speed = 0.6;
+        p.position.x += (dx / dist) * speed * delta;
+        p.position.z += (dz / dist) * speed * delta;
       }
-
-      // If they get too close, instant death
-      if (dist < 0.8 && !gameOver) {
-        triggerDeath("An alternate reached you.");
+      // kill if too close
+      if (Math.hypot(player.x - p.position.x, player.z - p.position.z) < 0.9 && !gameOver) {
+        triggerDeath('An alternate reached you.');
       }
+    } else {
+      // humans wander slowly
+      p.position.x += Math.sin(p.userData.phase * 0.5) * 0.02 * delta;
+      p.position.z += Math.cos(p.userData.phase * 0.5) * 0.02 * delta;
     }
-  });
+  }
 }
 
 function treatPatient() {
   // Raycast from camera center
   raycaster.setFromCamera(mouse, camera);
-  const intersects = raycaster.intersectObjects(patients, false);
-
-  if (intersects.length === 0) {
-    uiMessage.textContent = "No patient in reach.";
+  // convert patient groups to array of meshes for intersection
+  const meshes = [];
+  for (let g of patients) {
+    g.traverse((m) => { if (m.isMesh) meshes.push(m); });
+  }
+  const intersects = raycaster.intersectObjects(meshes, false);
+  if (!intersects.length) {
+    ui.message.textContent = 'No patient in view.';
     return;
   }
-
-  const target = intersects[0].object;
-  const dist = intersects[0].distance;
+  const hit = intersects[0];
+  const dist = hit.distance;
   if (dist > 4) {
-    uiMessage.textContent = "Too far to treat.";
+    ui.message.textContent = 'Too far to treat.';
     return;
   }
 
-  const isAlternate = target.userData.isAlternate;
-
-  if (isAlternate) {
-    triggerDeath("You tried to treat an alternate.");
-  } else {
-    // Reward
-    money += 15;
-    treatedCount++;
-    uiMessage.textContent = "You treated a human. They leave quietly.";
-    // Remove patient
-    scene.remove(target);
-    patients = patients.filter((p) => p !== target);
-    // Spawn a new one after a short delay
-    setTimeout(spawnPatient, 1500);
+  // find parent group (patient)
+  let parent = hit.object;
+  while (parent && !patients.includes(parent)) parent = parent.parent;
+  if (!parent) {
+    ui.message.textContent = 'No patient found.';
+    return;
   }
 
+  if (parent.userData.isAlternate) {
+    triggerDeath('You tried to treat an alternate.');
+    return;
+  }
+
+  // treat human
+  money += 15;
+  treatedCount++;
+  ui.message.textContent = 'You treated a human. They leave quietly.';
+  // remove patient group
+  scene.remove(parent);
+  patients = patients.filter(p => p !== parent);
+  // spawn replacement
+  setTimeout(spawnPatient, 1200);
   updateUI();
 }
 
 function triggerDeath(reason) {
   gameOver = true;
-  uiMessage.textContent = "GAME OVER: " + reason;
-  overlay.style.display = "flex";
-  overlay.querySelector("#title").textContent = "You Died";
-  overlay.querySelector("#subtitle").textContent = reason + " Shift ended.";
-  startBtn.textContent = "Try Again";
+  ui.message.textContent = 'GAME OVER: ' + reason;
+  overlay.style.display = 'flex';
+  overlay.querySelector('#title').textContent = 'You Died';
+  overlay.querySelector('#subtitle').textContent = reason + ' Shift ended.';
+  startBtn.textContent = 'Try Again';
 }
 
 function buyFood() {
   if (gameOver) return;
-  if (money >= 10) {
-    money -= 10;
-    hunger = Math.min(100, hunger + 25);
-    uiMessage.textContent = "You eat something. The room feels quieter.";
-    updateUI();
-  } else {
-    uiMessage.textContent = "Not enough money for food.";
-  }
+  if (money >= 10) { money -= 10; hunger = Math.min(100, hunger + 25); ui.message.textContent = 'You eat something.'; updateUI(); }
+  else ui.message.textContent = 'Not enough money for food.';
 }
 
 function buyWater() {
   if (gameOver) return;
-  if (money >= 5) {
-    money -= 5;
-    hydration = Math.min(100, hydration + 25);
-    uiMessage.textContent = "You drink water. For a moment, you feel human.";
-    updateUI();
-  } else {
-    uiMessage.textContent = "Not enough money for water.";
-  }
+  if (money >= 5) { money -= 5; hydration = Math.min(100, hydration + 25); ui.message.textContent = 'You drink water.'; updateUI(); }
+  else ui.message.textContent = 'Not enough money for water.';
 }
 
 function updateUI() {
-  uiMoney.textContent = money.toString();
-  uiHunger.textContent = Math.max(0, hunger).toFixed(0);
-  uiHydration.textContent = Math.max(0, hydration).toFixed(0);
-  uiTreated.textContent = treatedCount.toString();
+  ui.money.textContent = money.toString();
+  ui.hunger.textContent = Math.max(0, hunger).toFixed(0);
+  ui.hydration.textContent = Math.max(0, hydration).toFixed(0);
+  ui.treated.textContent = treatedCount.toString();
 }
 
 function updateStats(delta) {
-  // Hunger and hydration drain over time
-  hunger -= 2 * delta;
-  hydration -= 3 * delta;
-
+  hunger -= 1.5 * delta;
+  hydration -= 2.2 * delta;
   if (hunger <= 0 || hydration <= 0) {
-    if (!gameOver) {
-      triggerDeath("You neglected your own needs.");
-    }
+    if (!gameOver) triggerDeath('You neglected your own needs.');
   }
-
   updateUI();
 }
 
 function movePlayer(delta) {
-  const forward = keys["KeyW"] || keys["ArrowUp"];
-  const backward = keys["KeyS"] || keys["ArrowDown"];
-  const left = keys["KeyA"] || keys["ArrowLeft"];
-  const right = keys["KeyD"] || keys["ArrowRight"];
+  const forward = keys['KeyW'] || keys['ArrowUp'];
+  const back = keys['KeyS'] || keys['ArrowDown'];
+  const left = keys['KeyA'] || keys['ArrowLeft'];
+  const right = keys['KeyD'] || keys['ArrowRight'];
 
-  let moveX = 0;
-  let moveZ = 0;
+  let mx = 0, mz = 0;
+  if (forward) mz -= 1;
+  if (back) mz += 1;
+  if (left) mx -= 1;
+  if (right) mx += 1;
 
-  if (forward) moveZ -= 1;
-  if (backward) moveZ += 1;
-  if (left) moveX -= 1;
-  if (right) moveX += 1;
+  const len = Math.hypot(mx, mz);
+  if (len > 0) { mx /= len; mz /= len; }
 
-  const len = Math.hypot(moveX, moveZ);
-  if (len > 0) {
-    moveX /= len;
-    moveZ /= len;
-  }
+  const sin = Math.sin(player.rotY), cos = Math.cos(player.rotY);
+  const dx = (mz * sin + mx * cos) * player.speed * delta;
+  const dz = (mz * cos - mx * sin) * player.speed * delta;
 
-  const sin = Math.sin(player.rotY);
-  const cos = Math.cos(player.rotY);
-
-  const worldDX = (moveZ * sin + moveX * cos) * player.speed * delta;
-  const worldDZ = (moveZ * cos - moveX * sin) * player.speed * delta;
-
-  player.x += worldDX;
-  player.z += worldDZ;
-
-  // Clamp inside room
+  player.x += dx; player.z += dz;
   player.x = Math.max(-8.5, Math.min(8.5, player.x));
   player.z = Math.max(-8.5, Math.min(8.5, player.z));
 
   camera.position.set(player.x, 1.6, player.z);
-  camera.rotation.set(0, player.rotY, 0);
+  camera.rotation.set(0, player.rotY, 0, 'YXZ');
 }
 
 function spawnLoop(delta) {
@@ -355,7 +346,7 @@ function spawnLoop(delta) {
 }
 
 function animate() {
-  if (!clock) return;
+  if (!clock) clock = new THREE.Clock();
   const delta = clock.getDelta();
 
   if (!gameOver) {
@@ -364,6 +355,9 @@ function animate() {
     updateStats(delta);
     spawnLoop(delta);
   }
+
+  // update camera orientation smoothly
+  camera.rotation.y = player.rotY;
 
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
